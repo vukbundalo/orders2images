@@ -9,16 +9,14 @@ const String hl7OutPath = r'C:\Temp\HL7\Out';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // initialize SQLite FFI
   sqfliteFfiInit();
 
-  // ensure HL7 In/Out folders exist
+  // make sure In/Out exist
   final inDir = Directory(hl7InPath);
   final outDir = Directory(hl7OutPath);
   if (!await inDir.exists()) await inDir.create(recursive: true);
   if (!await outDir.exists()) await outDir.create(recursive: true);
 
-  // open database
   await DatabaseService.instance.db;
   runApp(const Order2ImageApp());
 }
@@ -26,7 +24,6 @@ void main() async {
 class Order2ImageApp extends StatelessWidget {
   const Order2ImageApp({super.key});
 
-  // Dedalus brand colors
   static const Color dedalusPrimary = Color(0xFF005EB8);
   static const Color dedalusAccent = Color(0xFF78BE20);
 
@@ -37,9 +34,7 @@ class Order2ImageApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: false,
         primaryColor: dedalusPrimary,
-        colorScheme: ColorScheme.fromSwatch().copyWith(
-          secondary: dedalusAccent,
-        ),
+        colorScheme: ColorScheme.fromSwatch().copyWith(secondary: dedalusAccent),
         cardTheme: const CardThemeData(
           elevation: 4,
           margin: EdgeInsets.all(8),
@@ -56,24 +51,20 @@ class Order2ImageApp extends StatelessWidget {
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
-
   @override
   State<MainScreen> createState() => _MainScreenState();
 }
 
 class _MainScreenState extends State<MainScreen> {
-  // data lists
   List<Patient> patients = [];
   Patient? selectedPatient;
   List<OrderModel> orders = [];
   List<AuditEvent> events = [];
   List<ImageModel> capturedImages = [];
 
-  // scroll controllers for auto-scroll
   final ScrollController _auditController = ScrollController();
   final ScrollController _imageController = ScrollController();
 
-  // form state
   String? selectedProcedure;
   String? selectedPriority;
   final procedures = ['CT Abdomen', 'Chest X‑Ray', 'Brain MRI'];
@@ -83,12 +74,20 @@ class _MainScreenState extends State<MainScreen> {
   void initState() {
     super.initState();
     _loadAll();
-    // watch for JSON files created by BridgeLink
+    // watch for JSON creation, then mark delivered and refresh orders/audit
     Directory(hl7OutPath).watch().listen((evt) async {
       if (evt.type == FileSystemEvent.create && evt.path.endsWith('.json')) {
         final fname = p.basename(evt.path);
+        final orderId = fname.replaceAll('.json', '');
+
+        // log JSON creation
         await DatabaseService.instance.logAudit('JSON_CREATED', fname);
+        // now mark order as delivered/ready
+        await DatabaseService.instance.logAudit('ORDER_DELIVERED', orderId);
+
+        // refresh audit timeline and imaging dashboard
         await _loadAudit();
+        await _loadOrders();
       }
     });
   }
@@ -129,9 +128,7 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Future<void> _loadCapturedImages(String patientId) async {
-    capturedImages = await DatabaseService.instance.getImagesByPatient(
-      patientId,
-    );
+    capturedImages = await DatabaseService.instance.getImagesByPatient(patientId);
     setState(() {});
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_imageController.hasClients) {
@@ -146,16 +143,12 @@ class _MainScreenState extends State<MainScreen> {
     String procedure,
     String priority,
   ) {
-    // timestamp in YYYYMMDDHHMMSS
     final ts = DateTime.now()
         .toIso8601String()
         .replaceAll(RegExp(r'[-:]'), '')
         .split('.')
         .first;
-
-    // reformat DOB from “YYYY-MM-DD” → “YYYYMMDD”
     final dobFormatted = p.dob.replaceAll('-', '');
-
     return '''
 MSH|^~\\&|APP|FAC|BRIDGELINK|BRIDGELINK|$ts||ORM^O01|$orderId|P|2.3
 PID|1||${p.patientID}^^^FAC^MR||${p.lastName}^${p.firstName}||${dobFormatted}|${p.gender}
@@ -171,10 +164,7 @@ OBR|1|$orderId^FAC||$procedure|||$ts
     final accent = Order2ImageApp.dedalusAccent;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Order2Image'),
-        backgroundColor: primary,
-      ),
+      appBar: AppBar(title: const Text('Order2Image'), backgroundColor: primary),
       body: Row(
         children: [
           // Doctor Dashboard
@@ -186,26 +176,15 @@ OBR|1|$orderId^FAC||$procedure|||$ts
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Doctor Dashboard',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: primary,
-                      ),
-                    ),
+                    Text('Doctor Dashboard',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: primary)),
                     const SizedBox(height: 8),
-
-                    // patient dropdown
                     DropdownButton<String>(
                       isExpanded: true,
                       hint: const Text('Select Patient'),
                       value: selectedPatient?.patientID,
                       items: patients.map((p) {
-                        return DropdownMenuItem(
-                          value: p.patientID,
-                          child: Text('${p.firstName} ${p.lastName}'),
-                        );
+                        return DropdownMenuItem(value: p.patientID, child: Text('${p.firstName} ${p.lastName}'));
                       }).toList(),
                       onChanged: (id) async {
                         final p = patients.firstWhere((x) => x.patientID == id);
@@ -215,94 +194,56 @@ OBR|1|$orderId^FAC||$procedure|||$ts
                       },
                     ),
                     const SizedBox(height: 16),
-
-                    // imaging request form
                     if (selectedPatient != null) ...[
-                      Text(
-                        'Request Imaging for '
-                        '${selectedPatient!.firstName} ${selectedPatient!.lastName}',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: accent,
-                        ),
-                      ),
+                      Text('Request Imaging for ${selectedPatient!.firstName} ${selectedPatient!.lastName}',
+                          style: TextStyle(fontWeight: FontWeight.bold, color: accent)),
                       const SizedBox(height: 8),
                       DropdownButtonFormField<String>(
-                        decoration: const InputDecoration(
-                          labelText: 'Procedure',
-                        ),
+                        decoration: const InputDecoration(labelText: 'Procedure'),
                         items: procedures
-                            .map(
-                              (proc) => DropdownMenuItem(
-                                value: proc,
-                                child: Text(proc),
-                              ),
-                            )
+                            .map((proc) => DropdownMenuItem(value: proc, child: Text(proc)))
                             .toList(),
                         value: selectedProcedure,
                         onChanged: (v) => setState(() => selectedProcedure = v),
                       ),
                       const SizedBox(height: 8),
                       DropdownButtonFormField<String>(
-                        decoration: const InputDecoration(
-                          labelText: 'Priority',
-                        ),
-                        items: priorities
-                            .map(
-                              (p) => DropdownMenuItem(value: p, child: Text(p)),
-                            )
-                            .toList(),
+                        decoration: const InputDecoration(labelText: 'Priority'),
+                        items: priorities.map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
                         value: selectedPriority,
                         onChanged: (v) => setState(() => selectedPriority = v),
                       ),
                       const SizedBox(height: 8),
                       ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: primary,
-                        ),
-                        onPressed:
-                            (selectedProcedure != null &&
-                                selectedPriority != null)
+                        style: ElevatedButton.styleFrom(backgroundColor: primary),
+                        onPressed: (selectedProcedure != null && selectedPriority != null)
                             ? () async {
-                                final orderId =
-                                    'O${DateTime.now().millisecondsSinceEpoch}';
-                                // insert into DB
+                                final orderId = 'O${DateTime.now().millisecondsSinceEpoch}';
+                                // insert order
                                 await DatabaseService.instance.insertOrder(
                                   orderId: orderId,
                                   patientId: selectedPatient!.patientID,
                                   procedureCode: selectedProcedure!,
-                                  orderDateTime: DateTime.now()
-                                      .toIso8601String(),
+                                  orderDateTime: DateTime.now().toIso8601String(),
                                 );
-                                await DatabaseService.instance.logAudit(
-                                  'ORDER_CREATED',
-                                  orderId,
-                                );
-
-                                // generate & write HL7
+                                // log order creation
+                                await DatabaseService.instance.logAudit('ORDER_CREATED', orderId);
+                                // write HL7
                                 final msg = _buildHl7Message(
                                   selectedPatient!,
                                   orderId,
                                   selectedProcedure!,
                                   selectedPriority!,
                                 );
-                                final file = File(
-                                  p.join(hl7InPath, '$orderId.hl7'),
-                                );
-                                // after:
+                                final file = File(p.join(hl7InPath, '$orderId.hl7'));
                                 await file.writeAsString(msg);
-                                // log the entire message
-                                await DatabaseService.instance.logAudit(
-                                  'HL7_CREATED',
-                                  msg,
-                                );
-
-                                // refresh views
-                                await _loadOrders();
+                                // log HL7 created
+                                await DatabaseService.instance.logAudit('HL7_CREATED', msg);
+                                // log that we're waiting for JSON
+                                await DatabaseService.instance.logAudit('WAITING_FOR_JSON', orderId);
+                                // refresh only audit and captured images
                                 await _loadAudit();
-                                await _loadCapturedImages(
-                                  selectedPatient!.patientID,
-                                );
+                                await _loadCapturedImages(selectedPatient!.patientID);
                                 selectedProcedure = null;
                                 selectedPriority = null;
                                 setState(() {});
@@ -311,18 +252,11 @@ OBR|1|$orderId^FAC||$procedure|||$ts
                         child: const Text('Send Order'),
                       ),
                     ],
-
                     const Spacer(),
                     const Divider(),
                     const SizedBox(height: 8),
-                    Text(
-                      'Captured Images:',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: accent,
-                      ),
-                    ),
+                    Text('Captured Images:',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: accent)),
                     const SizedBox(height: 8),
                     SizedBox(
                       height: 150,
@@ -335,11 +269,7 @@ OBR|1|$orderId^FAC||$procedure|||$ts
                                 final img = capturedImages[i];
                                 final date = img.studyDate.substring(0, 10);
                                 final time = img.studyDate.substring(11, 19);
-                                return ListTile(
-                                  dense: true,
-                                  title: Text(img.modality),
-                                  subtitle: Text('$date $time'),
-                                );
+                                return ListTile(dense: true, title: Text(img.modality), subtitle: Text('$date $time'));
                               },
                             ),
                     ),
@@ -358,78 +288,39 @@ OBR|1|$orderId^FAC||$procedure|||$ts
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Audit & Timeline',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: primary,
-                      ),
-                    ),
+                    Text('Audit & Timeline',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: primary)),
                     const SizedBox(height: 8),
                     Expanded(
                       child: events.isEmpty
                           ? const Center(child: Text('No audit events yet.'))
-                          : Expanded(
-                              child: events.isEmpty
-                                  ? const Center(
-                                      child: Text('No audit events yet.'),
-                                    )
-                                  : ListView.builder(
-                                      controller: _auditController,
-                                      itemCount: events.length,
-                                      itemBuilder: (context, i) {
-                                        final e = events[i];
-                                        if (e.eventType == 'HL7_CREATED') {
-                                          return Card(
-                                            margin: const EdgeInsets.symmetric(
-                                              vertical: 4,
-                                            ),
-                                            child: Padding(
-                                              padding: const EdgeInsets.all(
-                                                8.0,
-                                              ),
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    'HL7 Message Created',
-                                                    style: TextStyle(
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      color: Theme.of(
-                                                        context,
-                                                      ).primaryColor,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 4),
-                                                  // show the full HL7 (multi‑line)
-                                                  SelectableText(
-                                                    e.refId,
-                                                    style: const TextStyle(
-                                                      fontFamily: 'monospace',
-                                                      fontSize: 12,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          );
-                                        } else {
-                                          // all other events stay as before
-                                          return ListTile(
-                                            dense: true,
-                                            leading: Text(
-                                              e.time.substring(11, 19),
-                                            ),
-                                            title: Text(
-                                              '${e.eventType} → ${e.refId}',
-                                            ),
-                                          );
-                                        }
-                                      },
+                          : ListView.builder(
+                              controller: _auditController,
+                              itemCount: events.length,
+                              itemBuilder: (context, i) {
+                                final e = events[i];
+                                if (e.eventType == 'HL7_CREATED') {
+                                  return Card(
+                                    margin: const EdgeInsets.symmetric(vertical: 4),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(8.0),
+                                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                        Text('HL7 Message Created',
+                                            style: TextStyle(
+                                                fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor)),
+                                        const SizedBox(height: 4),
+                                        SelectableText(e.refId,
+                                            style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                                      ]),
                                     ),
+                                  );
+                                } else {
+                                  return ListTile(
+                                      dense: true,
+                                      leading: Text(e.time.substring(11, 19)),
+                                      title: Text('${e.eventType} → ${e.refId}'));
+                                }
+                              },
                             ),
                     ),
                   ],
@@ -444,82 +335,54 @@ OBR|1|$orderId^FAC||$procedure|||$ts
               child: Container(
                 color: Order2ImageApp.dedalusAccent.withOpacity(0.2),
                 padding: const EdgeInsets.all(8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Imaging Dashboard',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: accent,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Expanded(
-                      child: orders.isEmpty
-                          ? const Center(child: Text('No pending orders'))
-                          : ListView.builder(
-                              itemCount: orders.length,
-                              itemBuilder: (_, i) {
-                                final o = orders[i];
-                                return Card(
-                                  margin: const EdgeInsets.symmetric(
-                                    vertical: 4,
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Imaging Dashboard',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: accent)),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: orders.isEmpty
+                        ? const Center(child: Text('No pending orders'))
+                        : ListView.builder(
+                            itemCount: orders.length,
+                            itemBuilder: (_, i) {
+                              final o = orders[i];
+                              return Card(
+                                margin: const EdgeInsets.symmetric(vertical: 4),
+                                child: ListTile(
+                                  title: Text(o.procedureCode),
+                                  subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                    Text('Patient: ${o.patientName}'),
+                                    Text('Ordered: ${o.orderDateTime.substring(0, 16)}'),
+                                  ]),
+                                  trailing: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(backgroundColor: primary),
+                                    onPressed: () async {
+                                      final imageId = 'IMG${DateTime.now().millisecondsSinceEpoch}';
+                                      final studyDateTime = DateTime.now().toIso8601String();
+                                      final filePath = 'C:/MiniPACS/DICOM/Out/$imageId.dcm';
+                                      await DatabaseService.instance.insertImage(
+                                        imageId: imageId,
+                                        orderId: o.orderId,
+                                        patientId: o.patientId,
+                                        filePath: filePath,
+                                        studyDate: studyDateTime,
+                                        modality: 'CT',
+                                      );
+                                      await DatabaseService.instance.logAudit('IMAGE_CAPTURED', imageId);
+                                      await _loadOrders();
+                                      await _loadAudit();
+                                      if (selectedPatient != null) {
+                                        await _loadCapturedImages(selectedPatient!.patientID);
+                                      }
+                                    },
+                                    child: const Text('Capture'),
                                   ),
-                                  child: ListTile(
-                                    title: Text(o.procedureCode),
-                                    subtitle: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text('Patient: ${o.patientName}'),
-                                        Text(
-                                          'Ordered: ${o.orderDateTime.substring(0, 16)}',
-                                        ),
-                                      ],
-                                    ),
-                                    trailing: ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: primary,
-                                      ),
-                                      onPressed: () async {
-                                        final imageId =
-                                            'IMG${DateTime.now().millisecondsSinceEpoch}';
-                                        final studyDateTime = DateTime.now()
-                                            .toIso8601String();
-                                        final filePath =
-                                            'C:/MiniPACS/DICOM/Out/$imageId.dcm';
-                                        await DatabaseService.instance
-                                            .insertImage(
-                                              imageId: imageId,
-                                              orderId: o.orderId,
-                                              patientId: o.patientId,
-                                              filePath: filePath,
-                                              studyDate: studyDateTime,
-                                              modality: 'CT',
-                                            );
-                                        await DatabaseService.instance.logAudit(
-                                          'IMAGE_CAPTURED',
-                                          imageId,
-                                        );
-                                        await _loadOrders();
-                                        await _loadAudit();
-                                        if (selectedPatient != null) {
-                                          await _loadCapturedImages(
-                                            selectedPatient!.patientID,
-                                          );
-                                        }
-                                      },
-                                      child: const Text('Capture'),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                    ),
-                  ],
-                ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ]),
               ),
             ),
           ),
