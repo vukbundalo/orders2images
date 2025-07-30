@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
@@ -11,41 +12,25 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
 
-  // HL7 folders: In / Out / In/Processed / In/Error
-  const hl7InPath        = r'C:\Temp\HL7\In';
-  const hl7OutPath       = r'C:\Temp\HL7\Out';
-  const hl7ProcessedPath = r'C:\Temp\HL7\In\Processed';
-  const hl7ErrorPath     = r'C:\Temp\HL7\In\Error';
-  final hl7InDir         = Directory(hl7InPath);
-  final hl7OutDir        = Directory(hl7OutPath);
-  final hl7ProcessedDir  = Directory(hl7ProcessedPath);
-  final hl7ErrorDir      = Directory(hl7ErrorPath);
-  if (!await hl7InDir.exists())        await hl7InDir.create(recursive: true);
-  if (!await hl7OutDir.exists())       await hl7OutDir.create(recursive: true);
-  if (!await hl7ProcessedDir.exists()) await hl7ProcessedDir.create(recursive: true);
-  if (!await hl7ErrorDir.exists())     await hl7ErrorDir.create(recursive: true);
+  // HL7 folders: In / Out
+  final hl7InDir = Directory(hl7InPath);
+  final hl7OutDir = Directory(hl7OutPath);
+  if (!await hl7InDir.exists()) await hl7InDir.create(recursive: true);
+  if (!await hl7OutDir.exists()) await hl7OutDir.create(recursive: true);
 
-  // DICOM folders: In / Out / In/Processed / In/Error
-  const dicomInPath        = r'C:\Temp\DICOM\In';
-  const dicomOutPath       = r'C:\Temp\DICOM\Out';
-  const dicomProcessedPath = r'C:\Temp\DICOM\In\Processed';
-  const dicomErrorPath     = r'C:\Temp\DICOM\In\Error';
-  final dicomInDir         = Directory(dicomInPath);
-  final dicomOutDir        = Directory(dicomOutPath);
-  final dicomProcessedDir  = Directory(dicomProcessedPath);
-  final dicomErrorDir      = Directory(dicomErrorPath);
-  if (!await dicomInDir.exists())         await dicomInDir.create(recursive: true);
-  if (!await dicomOutDir.exists())        await dicomOutDir.create(recursive: true);
-  if (!await dicomProcessedDir.exists())  await dicomProcessedDir.create(recursive: true);
-  if (!await dicomErrorDir.exists())      await dicomErrorDir.create(recursive: true);
+  // DICOM folders: In / Out
+  const dicomInPath = r'C:\Temp\DICOM\In';
+  const dicomOutPath = r'C:\Temp\DICOM\Out';
+  final dicomInDir = Directory(dicomInPath);
+  final dicomOutDir = Directory(dicomOutPath);
+  if (!await dicomInDir.exists()) await dicomInDir.create(recursive: true);
+  if (!await dicomOutDir.exists()) await dicomOutDir.create(recursive: true);
 
   // open the database
   await DatabaseService.instance.db;
 
   runApp(const Order2ImageApp());
 }
-
-
 
 class Order2ImageApp extends StatelessWidget {
   const Order2ImageApp({super.key});
@@ -60,7 +45,9 @@ class Order2ImageApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: false,
         primaryColor: dedalusPrimary,
-        colorScheme: ColorScheme.fromSwatch().copyWith(secondary: dedalusAccent),
+        colorScheme: ColorScheme.fromSwatch().copyWith(
+          secondary: dedalusAccent,
+        ),
         cardTheme: const CardThemeData(
           elevation: 4,
           margin: EdgeInsets.all(8),
@@ -93,25 +80,19 @@ class _MainScreenState extends State<MainScreen> {
 
   String? selectedProcedure;
   String? selectedPriority;
-  final procedures = ['CT Abdomen', 'Chest X‑Ray', 'Brain MRI'];
+  final procedures = ['CT', 'XA', 'MRI'];
   final priorities = ['Routine', 'STAT'];
 
   @override
   void initState() {
     super.initState();
     _loadAll();
-    // watch for JSON creation, then mark delivered and refresh orders/audit
     Directory(hl7OutPath).watch().listen((evt) async {
       if (evt.type == FileSystemEvent.create && evt.path.endsWith('.json')) {
         final fname = p.basename(evt.path);
         final orderId = fname.replaceAll('.json', '');
-
-        // log JSON creation
         await DatabaseService.instance.logAudit('JSON_CREATED', fname);
-        // now mark order as delivered/ready
         await DatabaseService.instance.logAudit('ORDER_DELIVERED', orderId);
-
-        // refresh audit timeline and imaging dashboard
         await _loadAudit();
         await _loadOrders();
       }
@@ -154,7 +135,9 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Future<void> _loadCapturedImages(String patientId) async {
-    capturedImages = await DatabaseService.instance.getImagesByPatient(patientId);
+    capturedImages = await DatabaseService.instance.getImagesByPatient(
+      patientId,
+    );
     setState(() {});
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_imageController.hasClients) {
@@ -172,13 +155,12 @@ class _MainScreenState extends State<MainScreen> {
     final ts = DateTime.now()
         .toIso8601String()
         .replaceAll(RegExp(r'[-:]'), '')
-        .split('.'
-        )
+        .split('.')
         .first;
     final dobFormatted = p.dob.replaceAll('-', '');
     return '''
 MSH|^~\\&|APP|FAC|BRIDGELINK|BRIDGELINK|$ts||ORM^O01|$orderId|P|2.3
-PID|1||${p.patientID}^^^FAC^MR||${p.lastName}^${p.firstName}||${dobFormatted}|${p.gender}
+PID|1||${p.patientID}^^^FAC^MR||${p.lastName}^${p.firstName}||$dobFormatted|${p.gender}
 PV1|1|O
 ORC|NW|$orderId^FAC|||$priority
 OBR|1|$orderId^FAC||$procedure|||$ts
@@ -191,7 +173,10 @@ OBR|1|$orderId^FAC||$procedure|||$ts
     final accent = Order2ImageApp.dedalusAccent;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Order2Image'), backgroundColor: primary),
+      appBar: AppBar(
+        title: const Text('Order2Image'),
+        backgroundColor: primary,
+      ),
       body: Row(
         children: [
           // Doctor Dashboard
@@ -203,15 +188,24 @@ OBR|1|$orderId^FAC||$procedure|||$ts
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Doctor Dashboard',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: primary)),
+                    Text(
+                      'Doctor Dashboard',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: primary,
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     DropdownButton<String>(
                       isExpanded: true,
                       hint: const Text('Select Patient'),
                       value: selectedPatient?.patientID,
                       items: patients.map((p) {
-                        return DropdownMenuItem(value: p.patientID, child: Text('${p.firstName} ${p.lastName}'));
+                        return DropdownMenuItem(
+                          value: p.patientID,
+                          child: Text('${p.firstName} ${p.lastName}'),
+                        );
                       }).toList(),
                       onChanged: (id) async {
                         final p = patients.firstWhere((x) => x.patientID == id);
@@ -222,49 +216,86 @@ OBR|1|$orderId^FAC||$procedure|||$ts
                     ),
                     const SizedBox(height: 16),
                     if (selectedPatient != null) ...[
-                      Text('Request Imaging for ${selectedPatient!.firstName} ${selectedPatient!.lastName}',
-                          style: TextStyle(fontWeight: FontWeight.bold, color: accent)),
+                      Text(
+                        'Request Imaging for ${selectedPatient!.firstName} ${selectedPatient!.lastName}',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: accent,
+                        ),
+                      ),
                       const SizedBox(height: 8),
                       DropdownButtonFormField<String>(
-                        decoration: const InputDecoration(labelText: 'Procedure'),
+                        decoration: const InputDecoration(
+                          labelText: 'Procedure',
+                        ),
                         items: procedures
-                            .map((proc) => DropdownMenuItem(value: proc, child: Text(proc)))
+                            .map(
+                              (proc) => DropdownMenuItem(
+                                value: proc,
+                                child: Text(proc),
+                              ),
+                            )
                             .toList(),
                         value: selectedProcedure,
                         onChanged: (v) => setState(() => selectedProcedure = v),
                       ),
                       const SizedBox(height: 8),
                       DropdownButtonFormField<String>(
-                        decoration: const InputDecoration(labelText: 'Priority'),
-                        items: priorities.map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
+                        decoration: const InputDecoration(
+                          labelText: 'Priority',
+                        ),
+                        items: priorities
+                            .map(
+                              (p) => DropdownMenuItem(value: p, child: Text(p)),
+                            )
+                            .toList(),
                         value: selectedPriority,
                         onChanged: (v) => setState(() => selectedPriority = v),
                       ),
                       const SizedBox(height: 8),
                       ElevatedButton(
-                        style: ElevatedButton.styleFrom(backgroundColor: primary),
-                        onPressed: (selectedProcedure != null && selectedPriority != null)
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: primary,
+                        ),
+                        onPressed:
+                            (selectedProcedure != null &&
+                                selectedPriority != null)
                             ? () async {
-                                final orderId = 'O${DateTime.now().millisecondsSinceEpoch}';
+                                final orderId =
+                                    'O${DateTime.now().millisecondsSinceEpoch}';
                                 await DatabaseService.instance.insertOrder(
                                   orderId: orderId,
                                   patientId: selectedPatient!.patientID,
                                   procedureCode: selectedProcedure!,
-                                  orderDateTime: DateTime.now().toIso8601String(),
+                                  orderDateTime: DateTime.now()
+                                      .toIso8601String(),
                                 );
-                                await DatabaseService.instance.logAudit('ORDER_CREATED', orderId);
+                                await DatabaseService.instance.logAudit(
+                                  'ORDER_CREATED',
+                                  orderId,
+                                );
                                 final msg = _buildHl7Message(
                                   selectedPatient!,
                                   orderId,
                                   selectedProcedure!,
                                   selectedPriority!,
                                 );
-                                final file = File(p.join(hl7InPath, '$orderId.hl7'));
+                                final file = File(
+                                  p.join(hl7InPath, '$orderId.hl7'),
+                                );
                                 await file.writeAsString(msg);
-                                await DatabaseService.instance.logAudit('HL7_CREATED', msg);
-                                await DatabaseService.instance.logAudit('WAITING_FOR_JSON', orderId);
+                                await DatabaseService.instance.logAudit(
+                                  'HL7_CREATED',
+                                  msg,
+                                );
+                                await DatabaseService.instance.logAudit(
+                                  'WAITING_FOR_JSON',
+                                  orderId,
+                                );
                                 await _loadAudit();
-                                await _loadCapturedImages(selectedPatient!.patientID);
+                                await _loadCapturedImages(
+                                  selectedPatient!.patientID,
+                                );
                                 selectedProcedure = null;
                                 selectedPriority = null;
                                 setState(() {});
@@ -276,8 +307,85 @@ OBR|1|$orderId^FAC||$procedure|||$ts
                     const Spacer(),
                     const Divider(),
                     const SizedBox(height: 8),
-                    Text('Captured Images:',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: accent)),
+                    Text(
+                      'Captured Images:',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: accent,
+                      ),
+                    ),
+
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: () async {
+                            const path = r'C:\Temp\DICOM\Out';
+                            final dir = Directory(path);
+                            if (await dir.exists()) {
+                              await Process.start('explorer.exe', [path]);
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Directory does not exist: $path',
+                                  ),
+                                ),
+                              );
+                            }
+                          },
+                          icon: Icon(Icons.folder_open),
+                          label: Text('Open Images'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blueGrey,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        ElevatedButton.icon(
+                          onPressed: () async {
+                            const path = r'C:\Temp\DICOM\Out';
+                            final dir = Directory(path);
+                            if (await dir.exists()) {
+                              try {
+                                await for (final entity in dir.list(
+                                  recursive: true,
+                                )) {
+                                  try {
+                                    await entity.delete(recursive: true);
+                                  } catch (_) {}
+                                }
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Images folder cleared'),
+                                  ),
+                                );
+                              } catch (e) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Error while clearing: $e'),
+                                  ),
+                                );
+                              }
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Directory does not exist: $path',
+                                  ),
+                                ),
+                              );
+                            }
+                          },
+                          icon: Icon(Icons.delete),
+                          label: Text('Clear Images'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.redAccent,
+                          ),
+                        ),
+                      ],
+                    ),
+
                     const SizedBox(height: 8),
                     SizedBox(
                       height: 150,
@@ -290,7 +398,11 @@ OBR|1|$orderId^FAC||$procedure|||$ts
                                 final img = capturedImages[i];
                                 final date = img.studyDate.substring(0, 10);
                                 final time = img.studyDate.substring(11, 19);
-                                return ListTile(dense: true, title: Text(img.modality), subtitle: Text('$date $time'));
+                                return ListTile(
+                                  dense: true,
+                                  title: Text(img.modality),
+                                  subtitle: Text('$date $time'),
+                                );
                               },
                             ),
                     ),
@@ -309,8 +421,14 @@ OBR|1|$orderId^FAC||$procedure|||$ts
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Audit & Timeline',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: primary)),
+                    Text(
+                      'Audit & Timeline',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: primary,
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     Expanded(
                       child: events.isEmpty
@@ -322,24 +440,42 @@ OBR|1|$orderId^FAC||$procedure|||$ts
                                 final e = events[i];
                                 if (e.eventType == 'HL7_CREATED') {
                                   return Card(
-                                    margin: const EdgeInsets.symmetric(vertical: 4),
+                                    margin: const EdgeInsets.symmetric(
+                                      vertical: 4,
+                                    ),
                                     child: Padding(
                                       padding: const EdgeInsets.all(8.0),
-                                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                        Text('HL7 Message Created',
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'HL7 Message Created',
                                             style: TextStyle(
-                                                fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor)),
-                                        const SizedBox(height: 4),
-                                        SelectableText(e.refId,
-                                            style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
-                                      ]),
+                                              fontWeight: FontWeight.bold,
+                                              color: Theme.of(
+                                                context,
+                                              ).primaryColor,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          SelectableText(
+                                            e.refId,
+                                            style: const TextStyle(
+                                              fontFamily: 'monospace',
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   );
                                 } else {
                                   return ListTile(
-                                      dense: true,
-                                      leading: Text(e.time.substring(11, 19)),
-                                      title: Text('${e.eventType} → ${e.refId}'));
+                                    dense: true,
+                                    leading: Text(e.time.substring(11, 19)),
+                                    title: Text('${e.eventType} → ${e.refId}'),
+                                  );
                                 }
                               },
                             ),
@@ -356,93 +492,292 @@ OBR|1|$orderId^FAC||$procedure|||$ts
               child: Container(
                 color: Order2ImageApp.dedalusAccent.withOpacity(0.2),
                 padding: const EdgeInsets.all(8),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Imaging Dashboard',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: accent)),
-                  const SizedBox(height: 8),
-                  Expanded(
-                    child: orders.isEmpty
-                        ? const Center(child: Text('No pending orders'))
-                        : ListView.builder(
-                            itemCount: orders.length,
-                            itemBuilder: (_, i) {
-                              final o = orders[i];
-                              return Card(
-                                margin: const EdgeInsets.symmetric(vertical: 4),
-                                child: ListTile(
-                                  title: Text(o.procedureCode),
-                                  subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                    Text('Patient: ${o.patientName}'),
-                                    Text('Ordered: ${o.orderDateTime.substring(0, 16)}'),
-                                  ]),
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      ElevatedButton(
-                                        style: ElevatedButton.styleFrom(backgroundColor: primary),
-                                        onPressed: () async {
-                                          final imageId = 'IMG${DateTime.now().millisecondsSinceEpoch}';
-                                          final studyDateTime = DateTime.now().toIso8601String();
-                                          final filePath = 'C:/MiniPACS/DICOM/Out/$imageId.dcm';
-                                          await DatabaseService.instance.insertImage(
-                                            imageId: imageId,
-                                            orderId: o.orderId,
-                                            patientId: o.patientId,
-                                            filePath: filePath,
-                                            studyDate: studyDateTime,
-                                            modality: 'CT',
-                                          );
-                                          await DatabaseService.instance.logAudit('IMAGE_CAPTURED', imageId);
-                                          await _loadOrders();
-                                          await _loadAudit();
-                                          if (selectedPatient != null) {
-                                            await _loadCapturedImages(selectedPatient!.patientID);
-                                          }
-                                        },
-                                        child: const Text('Capture Image'),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      ElevatedButton(
-                                        style: ElevatedButton.styleFrom(backgroundColor: primary),
-                                        onPressed: () async {
-                                          final path = p.join(hl7OutPath, '${o.orderId}.json');
-                                          final file = File(path);
-                                          if (await file.exists()) {
-                                            final content = await file.readAsString();
-                                            showDialog(
-                                              context: context,
-                                              builder: (ctx) => AlertDialog(
-                                                title: const Text('Patient Details'),
-                                                content: SingleChildScrollView(
-                                                  child: Text(
-                                                    content,
-                                                    style: const TextStyle(fontFamily: 'monospace'),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Imaging Dashboard',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: accent,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: orders.isEmpty
+                          ? const Center(child: Text('No pending orders'))
+                          : ListView.builder(
+                              itemCount: orders.length,
+                              itemBuilder: (_, i) {
+                                final o = orders[i];
+                                return Card(
+                                  margin: const EdgeInsets.symmetric(
+                                    vertical: 4,
+                                  ),
+                                  child: ListTile(
+                                    title: Text(o.procedureCode),
+                                    subtitle: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text('Patient: ${o.patientName}'),
+                                        Text(
+                                          'Ordered: ${o.orderDateTime.substring(0, 16)}',
+                                        ),
+                                      ],
+                                    ),
+                                    trailing: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: primary,
+                                          ),
+                                          onPressed: () async {
+                                            print('[Capture Image] Started');
+                                            await DatabaseService.instance
+                                                .logAudit(
+                                                  'CAPTURE_STARTED',
+                                                  o.orderId,
+                                                );
+
+                                            final modality =
+                                                o.procedureCode
+                                                    .toUpperCase()
+                                                    .contains('MRI')
+                                                ? 'MRI'
+                                                : o.procedureCode
+                                                      .toUpperCase()
+                                                      .contains('XA')
+                                                ? 'XA'
+                                                : 'CT';
+
+                                            print(
+                                              '[Capture Image] Modality: $modality',
+                                            );
+
+                                            Future<void> cleanDirectory(
+                                              String path,
+                                            ) async {
+                                              final dir = Directory(path);
+                                              if (await dir.exists()) {
+                                                await for (var entity
+                                                    in dir.list(
+                                                      recursive: false,
+                                                    )) {
+                                                  try {
+                                                    if (entity is File) {
+                                                      await entity.delete();
+                                                    } else if (entity
+                                                        is Directory) {
+                                                      await entity.delete(
+                                                        recursive: true,
+                                                      );
+                                                    }
+                                                  } catch (_) {}
+                                                }
+                                              }
+                                            }
+
+                                            await cleanDirectory(
+                                              r'C:\Temp\DICOM\In',
+                                            );
+                                            await cleanDirectory(
+                                              r'C:\Temp\DICOM\Out',
+                                            );
+
+                                            final srcFolder = Directory(
+                                              'C:\\Users\\vukbundalo\\Desktop\\dicom_app_files\\$modality',
+                                            );
+                                            final dstFolder = Directory(
+                                              'C:\\Temp\\DICOM\\In\\$modality',
+                                            );
+
+                                            Future<void> copyDirectory(
+                                              Directory source,
+                                              Directory destination,
+                                            ) async {
+                                              if (!await destination.exists()) {
+                                                await destination.create(
+                                                  recursive: true,
+                                                );
+                                              }
+                                              await for (var entity
+                                                  in source.list()) {
+                                                final newPath =
+                                                    '${destination.path}\\${p.basename(entity.path)}';
+                                                if (entity is File) {
+                                                  await entity.copy(newPath);
+                                                }
+                                              }
+                                            }
+
+                                            if (await srcFolder.exists()) {
+                                              await copyDirectory(
+                                                srcFolder,
+                                                dstFolder,
+                                              );
+                                            } else {
+                                              print(
+                                                '[Capture Image] Source folder not found: ${srcFolder.path}',
+                                              );
+                                              await DatabaseService.instance
+                                                  .logAudit(
+                                                    'COPY_FAILED_NO_SOURCE',
+                                                    srcFolder.path,
+                                                  );
+                                              return;
+                                            }
+
+                                            print(
+                                              '[Capture Image] Sending using storescu...',
+                                            );
+                                            final storescu = await Process.start(
+                                              r'C:\dcmtk-3.6.9-win64-dynamic\bin\storescu.exe',
+                                              [
+                                                '127.0.0.1',
+                                                '11112',
+                                                '-v',
+                                                '+sd',
+                                                '+r',
+                                                '-nh',
+                                                r'C:\Temp\DICOM\In\*.*',
+                                              ],
+                                              runInShell: true,
+                                            );
+
+                                            storescu.stdout
+                                                .transform(utf8.decoder)
+                                                .listen((line) {
+                                                  if (line.contains(
+                                                        'Association',
+                                                      ) ||
+                                                      line.contains(
+                                                        'Store Response',
+                                                      )) {
+                                                    print('[storescu] $line');
+                                                  }
+                                                });
+
+                                            storescu.stderr
+                                                .transform(utf8.decoder)
+                                                .listen((line) {
+                                                  print(
+                                                    '[storescu] ERR: $line',
+                                                  );
+                                                });
+
+                                            // Do NOT wait for storescu to finish
+                                            final imageId =
+                                                'IMG${DateTime.now().millisecondsSinceEpoch}';
+                                            final filePath =
+                                                'C:/Temp/DICOM/Out/$imageId.dcm';
+
+                                            await DatabaseService.instance
+                                                .insertImage(
+                                                  imageId: imageId,
+                                                  orderId: o.orderId,
+                                                  patientId: o.patientId,
+                                                  filePath: filePath,
+                                                  studyDate: DateTime.now()
+                                                      .toIso8601String(),
+                                                  modality: modality,
+                                                );
+                                            await DatabaseService.instance
+                                                .logAudit(
+                                                  'IMAGE_CAPTURED',
+                                                  imageId,
+                                                );
+                                            print(
+                                              '[Capture Image] Image logged: $imageId',
+                                            );
+
+                                            await _loadOrders();
+                                            await _loadAudit();
+                                            if (selectedPatient != null) {
+                                              await _loadCapturedImages(
+                                                selectedPatient!.patientID,
+                                              );
+                                            }
+
+                                            await DatabaseService.instance
+                                                .logAudit(
+                                                  'CAPTURE_COMPLETE',
+                                                  imageId,
+                                                );
+                                            print('[Capture Image] Done');
+                                          },
+                                          child: const Text('Capture Image'),
+                                        ),
+
+                                        const SizedBox(width: 8),
+                                        ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: primary,
+                                          ),
+                                          onPressed: () async {
+                                            final path = p.join(
+                                              hl7OutPath,
+                                              '${o.orderId}.json',
+                                            );
+                                            final file = File(path);
+                                            if (await file.exists()) {
+                                              final content = await file
+                                                  .readAsString();
+                                              showDialog(
+                                                context: context,
+                                                builder: (ctx) => AlertDialog(
+                                                  title: const Text(
+                                                    'Patient Details',
+                                                  ),
+                                                  content:
+                                                      SingleChildScrollView(
+                                                        child: Text(
+                                                          content,
+                                                          style:
+                                                              const TextStyle(
+                                                                fontFamily:
+                                                                    'monospace',
+                                                              ),
+                                                        ),
+                                                      ),
+                                                  actions: [
+                                                    TextButton(
+                                                      onPressed: () =>
+                                                          Navigator.of(
+                                                            ctx,
+                                                          ).pop(),
+                                                      child: const Text(
+                                                        'Close',
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              );
+                                            } else {
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text(
+                                                    'JSON file not found.',
                                                   ),
                                                 ),
-                                                actions: [
-                                                  TextButton(
-                                                    onPressed: () => Navigator.of(ctx).pop(),
-                                                    child: const Text('Close'),
-                                                  ),
-                                                ],
-                                              ),
-                                            );
-                                          } else {
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              const SnackBar(content: Text('JSON file not found.')),
-                                            );
-                                          }
-                                        },
-                                        child: const Text('Patient Details'),
-                                      ),
-                                    ],
+                                              );
+                                            }
+                                          },
+                                          child: const Text('Patient Details'),
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                ),
-                              );
-                            },
-                          ),
-                  ),
-                ]),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -451,7 +786,6 @@ OBR|1|$orderId^FAC||$procedure|||$ts
     );
   }
 }
-
 
 // Models
 class AuditEvent {
