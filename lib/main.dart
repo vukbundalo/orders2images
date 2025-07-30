@@ -24,7 +24,7 @@ void main() async {
 }
 
 class Order2ImageApp extends StatelessWidget {
-  const Order2ImageApp({Key? key}) : super(key: key);
+  const Order2ImageApp({super.key});
 
   // Dedalus brand colors
   static const Color dedalusPrimary = Color(0xFF005EB8);
@@ -55,7 +55,7 @@ class Order2ImageApp extends StatelessWidget {
 }
 
 class MainScreen extends StatefulWidget {
-  const MainScreen({Key? key}) : super(key: key);
+  const MainScreen({super.key});
 
   @override
   State<MainScreen> createState() => _MainScreenState();
