@@ -315,9 +315,10 @@ OBR|1|$orderId^FAC||$procedure|||$ts
                         color: accent,
                       ),
                     ),
+                        const SizedBox(height: 12),
 
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         ElevatedButton.icon(
                           onPressed: () async {
@@ -505,282 +506,206 @@ OBR|1|$orderId^FAC||$procedure|||$ts
                     ),
                     const SizedBox(height: 8),
                     Expanded(
-                      child: orders.isEmpty
-                          ? const Center(child: Text('No pending orders'))
-                          : ListView.builder(
-                              itemCount: orders.length,
-                              itemBuilder: (_, i) {
-                                final o = orders[i];
-                                return Card(
-                                  margin: const EdgeInsets.symmetric(
-                                    vertical: 4,
-                                  ),
-                                  child: ListTile(
-                                    title: Text(o.procedureCode),
-                                    subtitle: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text('Patient: ${o.patientName}'),
-                                        Text(
-                                          'Ordered: ${o.orderDateTime.substring(0, 16)}',
-                                        ),
-                                      ],
-                                    ),
-                                    trailing: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        ElevatedButton(
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: primary,
-                                          ),
-                                          onPressed: () async {
-                                            print('[Capture Image] Started');
-                                            await DatabaseService.instance
-                                                .logAudit(
-                                                  'CAPTURE_STARTED',
-                                                  o.orderId,
-                                                );
-
-                                            final modality =
-                                                o.procedureCode
-                                                    .toUpperCase()
-                                                    .contains('MRI')
-                                                ? 'MRI'
-                                                : o.procedureCode
-                                                      .toUpperCase()
-                                                      .contains('XA')
-                                                ? 'XA'
-                                                : 'CT';
-
-                                            print(
-                                              '[Capture Image] Modality: $modality',
-                                            );
-
-                                            Future<void> cleanDirectory(
-                                              String path,
-                                            ) async {
-                                              final dir = Directory(path);
-                                              if (await dir.exists()) {
-                                                await for (var entity
-                                                    in dir.list(
-                                                      recursive: false,
-                                                    )) {
-                                                  try {
-                                                    if (entity is File) {
-                                                      await entity.delete();
-                                                    } else if (entity
-                                                        is Directory) {
-                                                      await entity.delete(
-                                                        recursive: true,
-                                                      );
-                                                    }
-                                                  } catch (_) {}
-                                                }
-                                              }
-                                            }
-
-                                            await cleanDirectory(
-                                              r'C:\Temp\DICOM\In',
-                                            );
-                                            await cleanDirectory(
-                                              r'C:\Temp\DICOM\Out',
-                                            );
-
-                                            final srcFolder = Directory(
-                                              'C:\\Users\\vukbundalo\\Desktop\\dicom_app_files\\$modality',
-                                            );
-                                            final dstFolder = Directory(
-                                              'C:\\Temp\\DICOM\\In\\$modality',
-                                            );
-
-                                            Future<void> copyDirectory(
-                                              Directory source,
-                                              Directory destination,
-                                            ) async {
-                                              if (!await destination.exists()) {
-                                                await destination.create(
-                                                  recursive: true,
-                                                );
-                                              }
-                                              await for (var entity
-                                                  in source.list()) {
-                                                final newPath =
-                                                    '${destination.path}\\${p.basename(entity.path)}';
-                                                if (entity is File) {
-                                                  await entity.copy(newPath);
-                                                }
-                                              }
-                                            }
-
-                                            if (await srcFolder.exists()) {
-                                              await copyDirectory(
-                                                srcFolder,
-                                                dstFolder,
-                                              );
-                                            } else {
-                                              print(
-                                                '[Capture Image] Source folder not found: ${srcFolder.path}',
-                                              );
-                                              await DatabaseService.instance
-                                                  .logAudit(
-                                                    'COPY_FAILED_NO_SOURCE',
-                                                    srcFolder.path,
-                                                  );
-                                              return;
-                                            }
-
-                                            print(
-                                              '[Capture Image] Sending using storescu...',
-                                            );
-                                            final storescu = await Process.start(
-                                              r'C:\dcmtk-3.6.9-win64-dynamic\bin\storescu.exe',
-                                              [
-                                                '127.0.0.1',
-                                                '11112',
-                                                '-v',
-                                                '+sd',
-                                                '+r',
-                                                '-nh',
-                                                r'C:\Temp\DICOM\In\*.*',
-                                              ],
-                                              runInShell: true,
-                                            );
-
-                                            storescu.stdout
-                                                .transform(utf8.decoder)
-                                                .listen((line) {
-                                                  if (line.contains(
-                                                        'Association',
-                                                      ) ||
-                                                      line.contains(
-                                                        'Store Response',
-                                                      )) {
-                                                    print('[storescu] $line');
-                                                  }
-                                                });
-
-                                            storescu.stderr
-                                                .transform(utf8.decoder)
-                                                .listen((line) {
-                                                  print(
-                                                    '[storescu] ERR: $line',
-                                                  );
-                                                });
-
-                                            // Do NOT wait for storescu to finish
-                                            final imageId =
-                                                'IMG${DateTime.now().millisecondsSinceEpoch}';
-                                            final filePath =
-                                                'C:/Temp/DICOM/Out/$imageId.dcm';
-
-                                            await DatabaseService.instance
-                                                .insertImage(
-                                                  imageId: imageId,
-                                                  orderId: o.orderId,
-                                                  patientId: o.patientId,
-                                                  filePath: filePath,
-                                                  studyDate: DateTime.now()
-                                                      .toIso8601String(),
-                                                  modality: modality,
-                                                );
-                                            await DatabaseService.instance
-                                                .logAudit(
-                                                  'IMAGE_CAPTURED',
-                                                  imageId,
-                                                );
-                                            print(
-                                              '[Capture Image] Image logged: $imageId',
-                                            );
-
-                                            await _loadOrders();
-                                            await _loadAudit();
-                                            if (selectedPatient != null) {
-                                              await _loadCapturedImages(
-                                                selectedPatient!.patientID,
-                                              );
-                                            }
-
-                                            await DatabaseService.instance
-                                                .logAudit(
-                                                  'CAPTURE_COMPLETE',
-                                                  imageId,
-                                                );
-                                            print('[Capture Image] Done');
-                                          },
-                                          child: const Text('Capture Image'),
-                                        ),
-
-                                        const SizedBox(width: 8),
-                                        ElevatedButton(
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: primary,
-                                          ),
-                                          onPressed: () async {
-                                            final path = p.join(
-                                              hl7OutPath,
-                                              '${o.orderId}.json',
-                                            );
-                                            final file = File(path);
-                                            if (await file.exists()) {
-                                              final content = await file
-                                                  .readAsString();
-                                              showDialog(
-                                                context: context,
-                                                builder: (ctx) => AlertDialog(
-                                                  title: const Text(
-                                                    'Patient Details',
-                                                  ),
-                                                  content:
-                                                      SingleChildScrollView(
-                                                        child: Text(
-                                                          content,
-                                                          style:
-                                                              const TextStyle(
-                                                                fontFamily:
-                                                                    'monospace',
-                                                              ),
-                                                        ),
-                                                      ),
-                                                  actions: [
-                                                    TextButton(
-                                                      onPressed: () =>
-                                                          Navigator.of(
-                                                            ctx,
-                                                          ).pop(),
-                                                      child: const Text(
-                                                        'Close',
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              );
-                                            } else {
-                                              ScaffoldMessenger.of(
-                                                context,
-                                              ).showSnackBar(
-                                                const SnackBar(
-                                                  content: Text(
-                                                    'JSON file not found.',
-                                                  ),
-                                                ),
-                                              );
-                                            }
-                                          },
-                                          child: const Text('Patient Details'),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
+  child: orders.isEmpty
+      ? const Center(child: Text('No pending orders'))
+      : ListView.builder(
+          itemCount: orders.length,
+          itemBuilder: (_, i) {
+            final o = orders[i];
+            return Card(
+              margin: const EdgeInsets.symmetric(vertical: 4),
+              child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      o.procedureCode,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
+                    const SizedBox(height: 4),
+                    Text('Patient: ${o.patientName}'),
+                    Text('Ordered: ${o.orderDateTime.substring(0, 16)}'),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: primary,
+                          ),
+                          onPressed: () async {
+                            print('[Capture Image] Started');
+                            await DatabaseService.instance.logAudit(
+                              'CAPTURE_STARTED',
+                              o.orderId,
+                            );
+
+                            final modality = o.procedureCode.toUpperCase().contains('MRI')
+                                ? 'MRI'
+                                : o.procedureCode.toUpperCase().contains('XA')
+                                    ? 'XA'
+                                    : 'CT';
+
+                            print('[Capture Image] Modality: $modality');
+
+                            Future<void> cleanDirectory(String path) async {
+                              final dir = Directory(path);
+                              if (await dir.exists()) {
+                                await for (var entity in dir.list(recursive: false)) {
+                                  try {
+                                    if (entity is File) {
+                                      await entity.delete();
+                                    } else if (entity is Directory) {
+                                      await entity.delete(recursive: true);
+                                    }
+                                  } catch (_) {}
+                                }
+                              }
+                            }
+
+                            await cleanDirectory(r'C:\Temp\DICOM\In');
+                            await cleanDirectory(r'C:\Temp\DICOM\Out');
+
+                            final srcFolder = Directory(
+                              'C:\\Users\\vukbundalo\\Desktop\\dicom_app_files\\$modality',
+                            );
+                            final dstFolder = Directory(
+                              'C:\\Temp\\DICOM\\In\\$modality',
+                            );
+
+                            Future<void> copyDirectory(
+                              Directory source,
+                              Directory destination,
+                            ) async {
+                              if (!await destination.exists()) {
+                                await destination.create(recursive: true);
+                              }
+                              await for (var entity in source.list()) {
+                                final newPath = '${destination.path}\\${p.basename(entity.path)}';
+                                if (entity is File) {
+                                  await entity.copy(newPath);
+                                }
+                              }
+                            }
+
+                            if (await srcFolder.exists()) {
+                              await copyDirectory(srcFolder, dstFolder);
+                            } else {
+                              print('[Capture Image] Source folder not found: ${srcFolder.path}');
+                              await DatabaseService.instance.logAudit(
+                                'COPY_FAILED_NO_SOURCE',
+                                srcFolder.path,
+                              );
+                              return;
+                            }
+
+                            print('[Capture Image] Sending using storescu...');
+                            final storescu = await Process.start(
+                              r'C:\dcmtk-3.6.9-win64-dynamic\bin\storescu.exe',
+                              [
+                                '127.0.0.1',
+                                '11112',
+                                '-v',
+                                '+sd',
+                                '+r',
+                                '-nh',
+                                r'C:\Temp\DICOM\In\*.*',
+                              ],
+                              runInShell: true,
+                            );
+
+                            storescu.stdout.transform(utf8.decoder).listen((line) {
+                              if (line.contains('Association') || line.contains('Store Response')) {
+                                print('[storescu] $line');
+                              }
+                            });
+
+                            storescu.stderr.transform(utf8.decoder).listen((line) {
+                              print('[storescu] ERR: $line');
+                            });
+
+                            final imageId = 'IMG${DateTime.now().millisecondsSinceEpoch}';
+                            final filePath = 'C:/Temp/DICOM/Out/$imageId.dcm';
+
+                            await DatabaseService.instance.insertImage(
+                              imageId: imageId,
+                              orderId: o.orderId,
+                              patientId: o.patientId,
+                              filePath: filePath,
+                              studyDate: DateTime.now().toIso8601String(),
+                              modality: modality,
+                            );
+                            await DatabaseService.instance.logAudit('IMAGE_CAPTURED', imageId);
+
+                            print('[Capture Image] Image logged: $imageId');
+
+                            await _loadOrders();
+                            await _loadAudit();
+                            if (selectedPatient != null) {
+                              await _loadCapturedImages(selectedPatient!.patientID);
+                            }
+
+                            await DatabaseService.instance.logAudit('CAPTURE_COMPLETE', imageId);
+                            print('[Capture Image] Done');
+                          },
+                          child: const Text('Capture Image'),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: primary,
+                          ),
+                          onPressed: () async {
+                            final path = p.join(hl7OutPath, '${o.orderId}.json');
+                            final file = File(path);
+                            if (await file.exists()) {
+                              final content = await file.readAsString();
+                              showDialog(
+                                context: context,
+                                builder: (ctx) => AlertDialog(
+                                  title: const Text('Patient Details'),
+                                  content: SingleChildScrollView(
+                                    child: Text(
+                                      content,
+                                      style: const TextStyle(fontFamily: 'monospace'),
+                                    ),
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.of(ctx).pop(),
+                                      child: const Text('Close'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('JSON file not found.'),
+                                ),
+                              );
+                            }
+                          },
+                          child: const Text('Patient Details'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+),
                   ],
                 ),
               ),
             ),
           ),
+
         ],
       ),
     );
