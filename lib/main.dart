@@ -174,7 +174,7 @@ OBR|1|$orderId^FAC||$procedure|||$ts
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Order2Image'),
+        title: const Text('Order2Image - Dedalus Exercises'),
         backgroundColor: primary,
       ),
       body: Row(
