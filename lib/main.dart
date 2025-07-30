@@ -152,9 +152,13 @@ class _MainScreenState extends State<MainScreen> {
         .replaceAll(RegExp(r'[-:]'), '')
         .split('.')
         .first;
+
+    // reformat DOB from “YYYY-MM-DD” → “YYYYMMDD”
+    final dobFormatted = p.dob.replaceAll('-', '');
+
     return '''
 MSH|^~\\&|APP|FAC|BRIDGELINK|BRIDGELINK|$ts||ORM^O01|$orderId|P|2.3
-PID|1||${p.patientID}^^^FAC^MR||${p.lastName}^${p.firstName}||${p.dob}|${p.gender}
+PID|1||${p.patientID}^^^FAC^MR||${p.lastName}^${p.firstName}||${dobFormatted}|${p.gender}
 PV1|1|O
 ORC|NW|$orderId^FAC|||$priority
 OBR|1|$orderId^FAC||$procedure|||$ts
