@@ -11,13 +11,25 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
 
-  // make sure In/Out exist
-  final inDir = Directory(hl7InPath);
-  final outDir = Directory(hl7OutPath);
-  if (!await inDir.exists()) await inDir.create(recursive: true);
-  if (!await outDir.exists()) await outDir.create(recursive: true);
+  // make sure HL7 In/Out exist
+  const hl7InPath  = r'C:\Temp\HL7\In';
+  const hl7OutPath = r'C:\Temp\HL7\Out';
+  final hl7InDir   = Directory(hl7InPath);
+  final hl7OutDir  = Directory(hl7OutPath);
+  if (!await hl7InDir.exists())  await hl7InDir.create(recursive: true);
+  if (!await hl7OutDir.exists()) await hl7OutDir.create(recursive: true);
 
+  // make sure DICOM In/Out exist
+  const dicomInPath  = r'C:\Temp\DICOM\In';
+  const dicomOutPath = r'C:\Temp\DICOM\Out';
+  final dicomInDir   = Directory(dicomInPath);
+  final dicomOutDir  = Directory(dicomOutPath);
+  if (!await dicomInDir.exists())  await dicomInDir.create(recursive: true);
+  if (!await dicomOutDir.exists()) await dicomOutDir.create(recursive: true);
+
+  // open the database
   await DatabaseService.instance.db;
+
   runApp(const Order2ImageApp());
 }
 
