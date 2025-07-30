@@ -146,7 +146,8 @@ class _MainScreenState extends State<MainScreen> {
     final ts = DateTime.now()
         .toIso8601String()
         .replaceAll(RegExp(r'[-:]'), '')
-        .split('.')
+        .split('.'
+        )
         .first;
     final dobFormatted = p.dob.replaceAll('-', '');
     return '''
@@ -219,16 +220,13 @@ OBR|1|$orderId^FAC||$procedure|||$ts
                         onPressed: (selectedProcedure != null && selectedPriority != null)
                             ? () async {
                                 final orderId = 'O${DateTime.now().millisecondsSinceEpoch}';
-                                // insert order
                                 await DatabaseService.instance.insertOrder(
                                   orderId: orderId,
                                   patientId: selectedPatient!.patientID,
                                   procedureCode: selectedProcedure!,
                                   orderDateTime: DateTime.now().toIso8601String(),
                                 );
-                                // log order creation
                                 await DatabaseService.instance.logAudit('ORDER_CREATED', orderId);
-                                // write HL7
                                 final msg = _buildHl7Message(
                                   selectedPatient!,
                                   orderId,
@@ -237,11 +235,8 @@ OBR|1|$orderId^FAC||$procedure|||$ts
                                 );
                                 final file = File(p.join(hl7InPath, '$orderId.hl7'));
                                 await file.writeAsString(msg);
-                                // log HL7 created
                                 await DatabaseService.instance.logAudit('HL7_CREATED', msg);
-                                // log that we're waiting for JSON
                                 await DatabaseService.instance.logAudit('WAITING_FOR_JSON', orderId);
-                                // refresh only audit and captured images
                                 await _loadAudit();
                                 await _loadCapturedImages(selectedPatient!.patientID);
                                 selectedProcedure = null;
@@ -354,28 +349,67 @@ OBR|1|$orderId^FAC||$procedure|||$ts
                                     Text('Patient: ${o.patientName}'),
                                     Text('Ordered: ${o.orderDateTime.substring(0, 16)}'),
                                   ]),
-                                  trailing: ElevatedButton(
-                                    style: ElevatedButton.styleFrom(backgroundColor: primary),
-                                    onPressed: () async {
-                                      final imageId = 'IMG${DateTime.now().millisecondsSinceEpoch}';
-                                      final studyDateTime = DateTime.now().toIso8601String();
-                                      final filePath = 'C:/MiniPACS/DICOM/Out/$imageId.dcm';
-                                      await DatabaseService.instance.insertImage(
-                                        imageId: imageId,
-                                        orderId: o.orderId,
-                                        patientId: o.patientId,
-                                        filePath: filePath,
-                                        studyDate: studyDateTime,
-                                        modality: 'CT',
-                                      );
-                                      await DatabaseService.instance.logAudit('IMAGE_CAPTURED', imageId);
-                                      await _loadOrders();
-                                      await _loadAudit();
-                                      if (selectedPatient != null) {
-                                        await _loadCapturedImages(selectedPatient!.patientID);
-                                      }
-                                    },
-                                    child: const Text('Capture'),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      ElevatedButton(
+                                        style: ElevatedButton.styleFrom(backgroundColor: primary),
+                                        onPressed: () async {
+                                          final imageId = 'IMG${DateTime.now().millisecondsSinceEpoch}';
+                                          final studyDateTime = DateTime.now().toIso8601String();
+                                          final filePath = 'C:/MiniPACS/DICOM/Out/$imageId.dcm';
+                                          await DatabaseService.instance.insertImage(
+                                            imageId: imageId,
+                                            orderId: o.orderId,
+                                            patientId: o.patientId,
+                                            filePath: filePath,
+                                            studyDate: studyDateTime,
+                                            modality: 'CT',
+                                          );
+                                          await DatabaseService.instance.logAudit('IMAGE_CAPTURED', imageId);
+                                          await _loadOrders();
+                                          await _loadAudit();
+                                          if (selectedPatient != null) {
+                                            await _loadCapturedImages(selectedPatient!.patientID);
+                                          }
+                                        },
+                                        child: const Text('Capture Image'),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      ElevatedButton(
+                                        style: ElevatedButton.styleFrom(backgroundColor: primary),
+                                        onPressed: () async {
+                                          final path = p.join(hl7OutPath, '${o.orderId}.json');
+                                          final file = File(path);
+                                          if (await file.exists()) {
+                                            final content = await file.readAsString();
+                                            showDialog(
+                                              context: context,
+                                              builder: (ctx) => AlertDialog(
+                                                title: const Text('Patient Details'),
+                                                content: SingleChildScrollView(
+                                                  child: Text(
+                                                    content,
+                                                    style: const TextStyle(fontFamily: 'monospace'),
+                                                  ),
+                                                ),
+                                                actions: [
+                                                  TextButton(
+                                                    onPressed: () => Navigator.of(ctx).pop(),
+                                                    child: const Text('Close'),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                          } else {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(content: Text('JSON file not found.')),
+                                            );
+                                          }
+                                        },
+                                        child: const Text('Patient Details'),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               );
@@ -391,6 +425,7 @@ OBR|1|$orderId^FAC||$procedure|||$ts
     );
   }
 }
+
 
 // Models
 class AuditEvent {
