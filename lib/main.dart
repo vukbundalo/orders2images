@@ -11,27 +11,41 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
 
-  // make sure HL7 In/Out exist
-  const hl7InPath  = r'C:\Temp\HL7\In';
-  const hl7OutPath = r'C:\Temp\HL7\Out';
-  final hl7InDir   = Directory(hl7InPath);
-  final hl7OutDir  = Directory(hl7OutPath);
-  if (!await hl7InDir.exists())  await hl7InDir.create(recursive: true);
-  if (!await hl7OutDir.exists()) await hl7OutDir.create(recursive: true);
+  // HL7 folders: In / Out / In/Processed / In/Error
+  const hl7InPath        = r'C:\Temp\HL7\In';
+  const hl7OutPath       = r'C:\Temp\HL7\Out';
+  const hl7ProcessedPath = r'C:\Temp\HL7\In\Processed';
+  const hl7ErrorPath     = r'C:\Temp\HL7\In\Error';
+  final hl7InDir         = Directory(hl7InPath);
+  final hl7OutDir        = Directory(hl7OutPath);
+  final hl7ProcessedDir  = Directory(hl7ProcessedPath);
+  final hl7ErrorDir      = Directory(hl7ErrorPath);
+  if (!await hl7InDir.exists())        await hl7InDir.create(recursive: true);
+  if (!await hl7OutDir.exists())       await hl7OutDir.create(recursive: true);
+  if (!await hl7ProcessedDir.exists()) await hl7ProcessedDir.create(recursive: true);
+  if (!await hl7ErrorDir.exists())     await hl7ErrorDir.create(recursive: true);
 
-  // make sure DICOM In/Out exist
-  const dicomInPath  = r'C:\Temp\DICOM\In';
-  const dicomOutPath = r'C:\Temp\DICOM\Out';
-  final dicomInDir   = Directory(dicomInPath);
-  final dicomOutDir  = Directory(dicomOutPath);
-  if (!await dicomInDir.exists())  await dicomInDir.create(recursive: true);
-  if (!await dicomOutDir.exists()) await dicomOutDir.create(recursive: true);
+  // DICOM folders: In / Out / In/Processed / In/Error
+  const dicomInPath        = r'C:\Temp\DICOM\In';
+  const dicomOutPath       = r'C:\Temp\DICOM\Out';
+  const dicomProcessedPath = r'C:\Temp\DICOM\In\Processed';
+  const dicomErrorPath     = r'C:\Temp\DICOM\In\Error';
+  final dicomInDir         = Directory(dicomInPath);
+  final dicomOutDir        = Directory(dicomOutPath);
+  final dicomProcessedDir  = Directory(dicomProcessedPath);
+  final dicomErrorDir      = Directory(dicomErrorPath);
+  if (!await dicomInDir.exists())         await dicomInDir.create(recursive: true);
+  if (!await dicomOutDir.exists())        await dicomOutDir.create(recursive: true);
+  if (!await dicomProcessedDir.exists())  await dicomProcessedDir.create(recursive: true);
+  if (!await dicomErrorDir.exists())      await dicomErrorDir.create(recursive: true);
 
   // open the database
   await DatabaseService.instance.db;
 
   runApp(const Order2ImageApp());
 }
+
+
 
 class Order2ImageApp extends StatelessWidget {
   const Order2ImageApp({super.key});
